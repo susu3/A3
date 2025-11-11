@@ -379,10 +379,54 @@ char *construct_prompt_for_seeds_message(char *protocol_name, char **final_msg, 
         closedir(dir);
     }
 
-    // Construct examples string
+    // Construct examples string with actual seed content in hex format
     if (example_count > 0) {
-        if (asprintf(&examples_str, "Here are some example seed files for the %s protocol:\n", protocol_name) == -1) {
+        // Calculate size needed for examples_str
+        size_t total_size = 200; // Base text
+        for (int i = 0; i < example_count; i++) {
+            if (example_seeds[i]) {
+                size_t seed_len = strlen(example_seeds[i]);
+                // Each byte = 2 hex chars + spaces + tags + newlines
+                total_size += seed_len * 3 + 200;
+            }
+        }
+        
+        examples_str = malloc(total_size);
+        if (!examples_str) {
             examples_str = strdup("");
+            goto cleanup;
+        }
+        
+        // Start with header
+        snprintf(examples_str, total_size, "Here are some example seed files for the %s protocol:\n", protocol_name);
+        
+        // Add each example seed in hex format
+        for (int i = 0; i < example_count; i++) {
+            if (example_seeds[i]) {
+                size_t seed_len = strlen(example_seeds[i]);
+                char *hex_buffer = malloc(seed_len * 3 + 100);
+                if (!hex_buffer) continue;
+                
+                char *pos = hex_buffer;
+                for (size_t j = 0; j < seed_len; j++) {
+                    sprintf(pos, "%02X", (unsigned char)example_seeds[i][j]);
+                    pos += 2;
+                    // Add space after every 4 hex characters (2 bytes)
+                    if ((j + 1) % 2 == 0 && j + 1 < seed_len) {
+                        *pos++ = ' ';
+                    }
+                }
+                *pos = '\0';
+                
+                // Append to examples_str
+                char temp[100];
+                snprintf(temp, sizeof(temp), "Example %d: <sequence>", i + 1);
+                strcat(examples_str, temp);
+                strcat(examples_str, hex_buffer);
+                strcat(examples_str, "</sequence>\n");
+                
+                free(hex_buffer);
+            }
         }
     } else {
         examples_str = strdup("");
