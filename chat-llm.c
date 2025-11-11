@@ -437,7 +437,7 @@ char *construct_prompt_for_seeds_message(char *protocol_name, char **final_msg, 
     }
 
     // Construct the final message
-    if (asprintf(&msg, "You are an expert in %s protocol fuzz testing. Your task is to generate **valid initial request messages** for fuzzing a binary protocol, using the **protocol specification**, writen in natural language, which is the authoritative source describing the protocol's correct structure and behavior. \\n"
+    if (asprintf(&msg, "You are an expert in %s protocol fuzz testing. Your task is to generate **valid initial request messages** for fuzzing a binary protocol, using the **protocol specification**, writen in natural language, which is the authoritative source describing the protocol's correct structure and behavior. \n"
         "The goal is to generate as many diverse and well-formed **request messages** as possible, suitable as fuzzing seeds.\n"
         "### Output format:\n"
         "- Wrap each request example with <sequence></sequence>.\n"
@@ -533,46 +533,66 @@ char *construct_prompt_for_seeds_sequence(char *protocol_name, char **final_msg,
     }
     rfc_file_content[file_size] = '\0';
 
-    if (asprintf(&msg, "[{\"role\": \"user\", \"content\": \"You are an expert in %s protocol fuzz testing. Your task is to generate valid client-side request message sequences for an industrial binary protocol using the Specification Document provided below. A request sequence is a series of multiple client-side request messages, sent one after another to follow the protocol's client state machine and message grammar. Each request message must be encoded in hexadecimal and strictly follow the inferred grammar. The full sequence should simulate a realistic multi-step client session and MUST omit any server-side responses.\\n\\n"
-        "# Inputs (authoritative):\\n"
-        "- The protocol specification written in natural language. Use it to reconstruct the protocol's client message grammar and a minimal but sufficient client-side state machine. Resolve ambiguities by looking for examples, field descriptions, and constraints in the spec.\\n\\n"
-        "# What you must do (silently, no extra text in output):\\n"
-        "1) From the Specification Document, silently reconstruct a client-side state machine (states, allowed client requests, transitions) and a message grammar (fields, sizes, types, constraints, computed fields like length/CRC, alignment/padding rules).\\n"
-        "2) Validate that each planned path uses CLIENT REQUESTS ONLY (no server frames) and is a valid path through the inferred client state machine.\\n"
-        "3) For each request message you will output: apply all field constraints; compute derived fields (length, sequence numbers, checksums/CRCs) correctly; and ensure inter-message dependencies (handles, session IDs, counters) are consistent across the sequence.\\n"
-        "4) Encoding rules:\\n"
-        "   - Output message bytes in hexadecimal. Insert a space every 4 hex digits (e.g., \\\"AABB CCDD ...\\\").\\n"
-        "   - Follow the endianness implied by the spec. If the spec is silent and no examples imply otherwise, default to network byte order (big-endian) and be consistent.\\n"
-        "   - Pad ASCII strings with null bytes if a fixed length is required.\\n"
-        "   - If a field is optional per the spec, include or omit it according to the chosen valid path.\\n"
-        "5) Output format (STRICT):\\n"
-        "<sequence>\\n"
-        "  <message>...</message>\\n"
-        "  <message>...</message>\\n"
-        "</sequence>\\n"
-        "- DO NOT output any explanations, assumptions, or comments—ONLY the sequences in the exact tags above.\\n\\n"
-        "# Diversity & Coverage:\\n"
-        "- Generate as many diverse, valid client-only sequences as possible, each corresponding to a distinct valid path.\\n"
-        "- Vary legal field values, optional sections, and multi-step flows while respecting all constraints and cross-message dependencies. Avoid superficial repetition.\\n\\n"
-        "### Example (format only):\\n"
-        "For the IEC104 protocol, an example sequence format is: <sequence><message>6804 0700 0000</message><message>6804 4300 0000</message><message>6804 1300 0000</message></sequence>\\n\\n"
-        "The Specification Document is as follows:\\n"
-        "=== BEGIN SPEC ===\\n"
-        "%s\\n"
-        "=== END SPEC ===\\n\"}]", 
+    // First, construct the message content (not yet JSON)
+    char *content = NULL;
+    if (asprintf(&content, "You are an expert in %s protocol fuzz testing. Your task is to generate valid client-side request message sequences for an industrial binary protocol using the Specification Document provided below. A request sequence is a series of multiple client-side request messages, sent one after another to follow the protocol's client state machine and message grammar. Each request message must be encoded in hexadecimal and strictly follow the inferred grammar. The full sequence should simulate a realistic multi-step client session and MUST omit any server-side responses.\n\n"
+        "# Inputs (authoritative):\n"
+        "- The protocol specification written in natural language. Use it to reconstruct the protocol's client message grammar and a minimal but sufficient client-side state machine. Resolve ambiguities by looking for examples, field descriptions, and constraints in the spec.\n\n"
+        "# What you must do (silently, no extra text in output):\n"
+        "1) From the Specification Document, silently reconstruct a client-side state machine (states, allowed client requests, transitions) and a message grammar (fields, sizes, types, constraints, computed fields like length/CRC, alignment/padding rules).\n"
+        "2) Validate that each planned path uses CLIENT REQUESTS ONLY (no server frames) and is a valid path through the inferred client state machine.\n"
+        "3) For each request message you will output: apply all field constraints; compute derived fields (length, sequence numbers, checksums/CRCs) correctly; and ensure inter-message dependencies (handles, session IDs, counters) are consistent across the sequence.\n"
+        "4) Encoding rules:\n"
+        "   - Output message bytes in hexadecimal. Insert a space every 4 hex digits (e.g., \"AABB CCDD ...\").\n"
+        "   - Follow the endianness implied by the spec. If the spec is silent and no examples imply otherwise, default to network byte order (big-endian) and be consistent.\n"
+        "   - Pad ASCII strings with null bytes if a fixed length is required.\n"
+        "   - If a field is optional per the spec, include or omit it according to the chosen valid path.\n"
+        "5) Output format (STRICT):\n"
+        "<sequence>\n"
+        "  <message>...</message>\n"
+        "  <message>...</message>\n"
+        "</sequence>\n"
+        "- DO NOT output any explanations, assumptions, or comments—ONLY the sequences in the exact tags above.\n\n"
+        "# Diversity & Coverage:\n"
+        "- Generate as many diverse, valid client-only sequences as possible, each corresponding to a distinct valid path.\n"
+        "- Vary legal field values, optional sections, and multi-step flows while respecting all constraints and cross-message dependencies. Avoid superficial repetition.\n\n"
+        "### Example (format only):\n"
+        "For the IEC104 protocol, an example sequence format is: <sequence><message>6804 0700 0000</message><message>6804 4300 0000</message><message>6804 1300 0000</message></sequence>\n\n"
+        "The Specification Document is as follows:\n"
+        "=== BEGIN SPEC ===\n"
+        "%s\n"
+        "=== END SPEC ===\n", 
         protocol_name, rfc_file_content) == -1) {
-        FATAL("Failed to construct seeds sequence prompt");
+        FATAL("Failed to construct seeds sequence content");
         goto cleanup;
     }
 
-    *final_msg = msg;
+    *final_msg = content;
+
+    // Now escape the content for JSON and construct the JSON message
+    char* escaped_content = json_escape_string(content);
+    if (!escaped_content) {
+        goto cleanup;
+    }
+    
+    if (asprintf(&msg, "[{\"role\": \"user\", \"content\": \"%s\"}]", escaped_content) == -1) {
+        ck_free(escaped_content);
+        msg = NULL;
+        goto cleanup;
+    }
+    
+    ck_free(escaped_content);
     
     return msg;
 
 cleanup:
     // Cleanup
     free(rfc_file_content);
-    free(msg);
+    // Don't free content here as it's assigned to *final_msg and caller expects to use it
+    // Only free content and msg if we're returning NULL (error case)
+    if (!msg) {
+        free(content);
+    }
     return NULL;
 }
 
