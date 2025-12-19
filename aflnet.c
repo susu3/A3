@@ -870,8 +870,8 @@ unsigned int *extract_response_codes_ethernetip(unsigned char *buf, unsigned int
       break;
     }
     //command code: 2 bytes, little-endian
-    //example: ListServices 04 00, command code =  04 00 00 00
-    command_code = (cur_ptr[0] << 24) | (cur_ptr[1] << 16); 
+	//example: ListServices 04 00, command code =  0x0004
+    command_code = cur_ptr[0] | (cur_ptr[1] << 8);
     //status field is from bytes 8-11, little-endian
     status_code = (cur_ptr[11] << 24) | (cur_ptr[10] << 16) | (cur_ptr[9] << 8) | cur_ptr[8];
     message_code = command_code + status_code;
@@ -881,6 +881,7 @@ unsigned int *extract_response_codes_ethernetip(unsigned char *buf, unsigned int
     state_sequence[state_count - 1] = message_code;
 
     length = (cur_ptr[3] << 8) | cur_ptr[2];
+	
     if (length >= 0 && remaining_buf >= 24 + length) {
       cur_ptr = cur_ptr + 24 +length;
     } else {
